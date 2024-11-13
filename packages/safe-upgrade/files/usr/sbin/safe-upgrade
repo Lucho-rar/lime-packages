@@ -25,14 +25,14 @@ local su = {}
 su.version = '1.0'
 local firmware_size_bytes = 7936*1024
 -- Keep the fw addresses as strings beacause of https://gitlab.com/librerouter/librerouteros/-/issues/61
-local fw1_addr = '0x9f050000'
-local fw2_addr = '0x9f810000' -- fw1_addr + firmware_size_bytes
+local fw1_addr = '0x9fc50000'
+local fw2_addr = '0xc0c50000' -- fw1_addr + firmware_size_bytes
 
-su._supported_devices = {'librerouter-v1'}
+su._supported_devices = {'librerouter-r2'}
 su._mtd_partitions_desc = '/proc/mtd'
 
 -- safe upgrade script, generated with bootscript.py, DO NOT edit here!
-local bootcmd = 'run preboot; boot_part=${stable_part}; if test ${testing_part} -ne 0; then echo Testing part ${testing_part}; boot_part=${testing_part}; set testing_part 0; saveenv; fi; if test ${boot_part} -eq 2; then fw_addr=${fw2_addr}; run boot_2; else fw_addr=${fw1_addr}; run boot_1; fi; run boot_1; bootm ${fw1_addr};'
+local bootcmd = 'run preboot; boot_part=${stable_part}; if test ${testing_part} -ne 0; then echo Testing part ${testing_part}; boot_part=${testing_part}; setenv testing_part 0; saveenv; fi; if test ${boot_part} -eq 2; then fw_addr=${fw2_addr}; run boot_2; else fw_addr=${fw1_addr}; run boot_1; fi; run boot_1; bootm ${fw1_addr};'
 
 su.STABLE_PARTITION_NAME = 'stable_part'
 su.TESTING_PARTITION_NAME = 'testing_part'
@@ -341,13 +341,17 @@ local function upgrade(args)
 
     -- TODO: load bootargs from acompaning image, here is hardcoded!!
     local fw_mtd_str = ''
+    local fw_addr_str = ''
     if partitions.other == 2 then
-        fw_mtd_str = '7936k(fw1),7936k(firmware)'
+        fw_mtd_str = '16m(fw1),-(firmware)'
+        fw_addr_str = 'fw2_addr'
     else
-        fw_mtd_str = '7936k(firmware),7936k(fw2)'
+        fw_mtd_str = '16m(firmware),-(fw2)'
+        fw_addr_str = 'fw1_addr'
     end
-    local boot_script_tpl = 'set bootargs console=ttyS0,115200 board=LIBREROUTERV1 mtdparts=spi0.0:256k(u-boot),64k(u-boot-env),%s,128k(res),64k(art); echo booting part %d; bootm ${fw_addr};'
-    local boot_script = string.format(boot_script_tpl, fw_mtd_str, partitions.other)
+
+    local boot_script_tpl = 'setenv bootargs console=ttyS0,115200 board=LIBREROUTERV2 mtdparts=spi0.0:192k(u-boot),4k(u-boot-env),60k(reserved),64k(factory),%s; echo booting part %d; bootm ${%s};'
+    local boot_script = string.format(boot_script_tpl, fw_mtd_str, partitions.other, fw_addr_str)
     set_uboot_env(string.format('boot_%d', partitions.other), boot_script)
     set_testing_partition(partitions.other)
 
